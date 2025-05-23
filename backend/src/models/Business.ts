@@ -1,59 +1,43 @@
 import mongoose, { Schema, Document } from 'mongoose';
 
-// Define the business hours interface
-interface BusinessHours {
-  open: string;
-  close: string;
-  isOpen: boolean;
-}
-
-// Define the business interface
 export interface IBusiness extends Document {
   _id: string;
   owner: mongoose.Types.ObjectId;
   name: string;
   description?: string;
-  whatsappNumber: string;
+  whatsappNumber?: string;
   website?: string;
   address?: string;
-  timeZone: string;
-  businessHours: {
-    monday: BusinessHours;
-    tuesday: BusinessHours;
-    wednesday: BusinessHours;
-    thursday: BusinessHours;
-    friday: BusinessHours;
-    saturday: BusinessHours;
-    sunday: BusinessHours;
-  };
+  timeZone?: string;
   services: string[];
+  settings: {
+    reminderTimes: string[];
+    messageTemplates: {
+      confirmation: string;
+      reminder24h: string;
+      reminder2h: string;
+      reminder30m: string;
+    };
+    businessHours: {
+      monday: { open: string; close: string; closed: boolean };
+      tuesday: { open: string; close: string; closed: boolean };
+      wednesday: { open: string; close: string; closed: boolean };
+      thursday: { open: string; close: string; closed: boolean };
+      friday: { open: string; close: string; closed: boolean };
+      saturday: { open: string; close: string; closed: boolean };
+      sunday: { open: string; close: string; closed: boolean };
+    };
+  };
   isActive: boolean;
   createdAt: Date;
   updatedAt: Date;
 }
 
-const businessHoursSchema = new Schema({
-  open: {
-    type: String,
-    required: true,
-    match: [/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/, 'Please enter time in HH:mm format']
-  },
-  close: {
-    type: String,
-    required: true,
-    match: [/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/, 'Please enter time in HH:mm format']
-  },
-  isOpen: {
-    type: Boolean,
-    default: true
-  }
-}, { _id: false });
-
 const businessSchema = new Schema<IBusiness>({
   owner: {
     type: Schema.Types.ObjectId,
     ref: 'User',
-    required: [true, 'Business owner is required']
+    required: true
   },
   name: {
     type: String,
@@ -63,65 +47,63 @@ const businessSchema = new Schema<IBusiness>({
   },
   description: {
     type: String,
-    trim: true,
     maxlength: [500, 'Description cannot exceed 500 characters']
   },
   whatsappNumber: {
     type: String,
-    required: [true, 'WhatsApp number is required'],
     trim: true,
     match: [/^\d{10,15}$/, 'Please enter a valid WhatsApp number']
   },
   website: {
     type: String,
-    trim: true,
-    match: [/^https?:\/\/.+/, 'Please enter a valid website URL']
+    trim: true
   },
   address: {
     type: String,
-    trim: true,
     maxlength: [200, 'Address cannot exceed 200 characters']
   },
   timeZone: {
     type: String,
-    required: [true, 'Time zone is required'],
     default: 'UTC'
-  },
-  businessHours: {
-    monday: { 
-      type: businessHoursSchema, 
-      default: { open: '09:00', close: '17:00', isOpen: true } 
-    },
-    tuesday: { 
-      type: businessHoursSchema, 
-      default: { open: '09:00', close: '17:00', isOpen: true } 
-    },
-    wednesday: { 
-      type: businessHoursSchema, 
-      default: { open: '09:00', close: '17:00', isOpen: true } 
-    },
-    thursday: { 
-      type: businessHoursSchema, 
-      default: { open: '09:00', close: '17:00', isOpen: true } 
-    },
-    friday: { 
-      type: businessHoursSchema, 
-      default: { open: '09:00', close: '17:00', isOpen: true } 
-    },
-    saturday: { 
-      type: businessHoursSchema, 
-      default: { open: '09:00', close: '17:00', isOpen: false } 
-    },
-    sunday: { 
-      type: businessHoursSchema, 
-      default: { open: '09:00', close: '17:00', isOpen: false } 
-    }
   },
   services: [{
     type: String,
     trim: true,
     maxlength: [100, 'Service name cannot exceed 100 characters']
   }],
+  settings: {
+    reminderTimes: {
+      type: [String],
+      default: ['24h', '2h', '30m']
+    },
+    messageTemplates: {
+      confirmation: {
+        type: String,
+        default: 'Hi {clientName}, your appointment for {service} is confirmed for {date} at {time}. See you then!'
+      },
+      reminder24h: {
+        type: String,
+        default: 'Hi {clientName}, this is a reminder that you have an appointment for {service} tomorrow at {time}.'
+      },
+      reminder2h: {
+        type: String,
+        default: 'Hi {clientName}, your appointment for {service} is in 2 hours at {time}.'
+      },
+      reminder30m: {
+        type: String,
+        default: 'Hi {clientName}, your appointment for {service} starts in 30 minutes!'
+      }
+    },
+    businessHours: {
+      monday: { open: { type: String, default: '09:00' }, close: { type: String, default: '17:00' }, closed: { type: Boolean, default: false } },
+      tuesday: { open: { type: String, default: '09:00' }, close: { type: String, default: '17:00' }, closed: { type: Boolean, default: false } },
+      wednesday: { open: { type: String, default: '09:00' }, close: { type: String, default: '17:00' }, closed: { type: Boolean, default: false } },
+      thursday: { open: { type: String, default: '09:00' }, close: { type: String, default: '17:00' }, closed: { type: Boolean, default: false } },
+      friday: { open: { type: String, default: '09:00' }, close: { type: String, default: '17:00' }, closed: { type: Boolean, default: false } },
+      saturday: { open: { type: String, default: '09:00' }, close: { type: String, default: '17:00' }, closed: { type: Boolean, default: true } },
+      sunday: { open: { type: String, default: '09:00' }, close: { type: String, default: '17:00' }, closed: { type: Boolean, default: true } }
+    }
+  },
   isActive: {
     type: Boolean,
     default: true
@@ -139,16 +121,7 @@ const businessSchema = new Schema<IBusiness>({
 // Indexes for better performance
 businessSchema.index({ owner: 1 });
 businessSchema.index({ name: 1 });
-businessSchema.index({ whatsappNumber: 1 });
 businessSchema.index({ isActive: 1 });
-
-// Virtual for business slug (for public booking URL)
-businessSchema.virtual('slug').get(function(this: IBusiness) {
-  return this.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
-});
-
-// Ensure virtual fields are serialized
-businessSchema.set('toJSON', { virtuals: true });
 
 const Business = mongoose.model<IBusiness>('Business', businessSchema);
 

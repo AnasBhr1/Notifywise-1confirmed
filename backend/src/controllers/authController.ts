@@ -42,6 +42,12 @@ const setTokenCookie = (res: Response, token: string): void => {
 
 // Register new user
 export const register = catchAsync(async (req: Request, res: Response) => {
+  // Debug logging
+  console.log('📝 Registration attempt:', {
+    body: req.body,
+    headers: req.headers['content-type'],
+  });
+  
   const { email, password, businessName, whatsappSenderId } = req.body;
 
   // Check if user already exists
@@ -62,7 +68,7 @@ export const register = catchAsync(async (req: Request, res: Response) => {
   const business = await Business.create({
     owner: user._id,
     name: businessName,
-    whatsappNumber: whatsappSenderId || '',
+    whatsappNumber: whatsappSenderId || undefined,
     services: ['General Consultation'], // Default service
   });
 

@@ -24,7 +24,7 @@ interface AuthContextType {
   user: User | null
   business: Business | null
   login: (email: string, password: string) => Promise<void>
-  register: (email: string, password: string, businessName: string) => Promise<void>
+  register: (email: string, password: string, businessName: string, whatsappNumber?: string) => Promise<void>
   logout: () => void
   loading: boolean
   isAuthenticated: boolean
@@ -87,12 +87,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }
 
-  const register = async (email: string, password: string, businessName: string) => {
+  const register = async (email: string, password: string, businessName: string, whatsappNumber?: string) => {
     try {
       const response = await axios.post('/auth/register', {
         email,
         password,
-        businessName
+        businessName,
+        whatsappSenderId: whatsappNumber // Backend expects 'whatsappSenderId'
       })
       
       if (response.data.success) {
