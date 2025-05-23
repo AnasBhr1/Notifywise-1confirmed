@@ -1,6 +1,18 @@
-import mongoose, { Schema } from 'mongoose';
+import mongoose, { Schema, Document } from 'mongoose';
 import bcrypt from 'bcryptjs';
-import { IUser } from '../types';
+
+export interface IUser extends Document {
+  _id: string;
+  email: string;
+  password: string;
+  businessName: string;
+  whatsappSenderId?: string;
+  role: 'admin' | 'user';
+  isActive: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+  comparePassword(candidatePassword: string): Promise<boolean>;
+}
 
 const userSchema = new Schema<IUser>({
   email: {

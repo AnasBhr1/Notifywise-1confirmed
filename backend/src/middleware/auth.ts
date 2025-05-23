@@ -9,7 +9,7 @@ export const authenticateToken = async (
   req: AuthRequest,
   res: Response,
   next: NextFunction
-) => {
+): Promise<void> => {
   try {
     // Get token from header or cookie
     const authHeader = req.headers.authorization;
@@ -20,10 +20,11 @@ export const authenticateToken = async (
       : cookieToken;
 
     if (!token) {
-      return res.status(401).json({
+      res.status(401).json({
         success: false,
         message: 'Access denied. No token provided.'
       });
+      return;
     }
 
     // Verify token
@@ -33,10 +34,11 @@ export const authenticateToken = async (
     const user = await User.findById(decoded.id).select('-password');
     
     if (!user || !user.isActive) {
-      return res.status(401).json({
+      res.status(401).json({
         success: false,
         message: 'Invalid token or user account deactivated.'
       });
+      return;
     }
 
     // Add user to request object
@@ -52,23 +54,26 @@ export const authenticateToken = async (
     console.error('Authentication error:', error);
     
     if (error instanceof jwt.JsonWebTokenError) {
-      return res.status(401).json({
+      res.status(401).json({
         success: false,
         message: 'Invalid token.'
       });
+      return;
     }
     
     if (error instanceof jwt.TokenExpiredError) {
-      return res.status(401).json({
+      res.status(401).json({
         success: false,
         message: 'Token expired.'
       });
+      return;
     }
 
-    return res.status(500).json({
+    res.status(500).json({
       success: false,
       message: 'Internal server error during authentication.'
     });
+    return;
   }
 };
 
@@ -77,19 +82,21 @@ export const requireAdmin = (
   req: AuthRequest,
   res: Response,
   next: NextFunction
-) => {
+): void => {
   if (!req.user) {
-    return res.status(401).json({
+    res.status(401).json({
       success: false,
       message: 'Authentication required.'
     });
+    return;
   }
 
   if (req.user.role !== 'admin') {
-    return res.status(403).json({
+    res.status(403).json({
       success: false,
       message: 'Admin access required.'
     });
+    return;
   }
 
   next();
@@ -97,27 +104,30 @@ export const requireAdmin = (
 
 // Middleware to check if user owns the resource (optional userId parameter)
 export const requireOwnership = (userIdParam: string = 'userId') => {
-  return (req: AuthRequest, res: Response, next: NextFunction) => {
+  return (req: AuthRequest, res: Response, next: NextFunction): void => {
     if (!req.user) {
-      return res.status(401).json({
+      res.status(401).json({
         success: false,
         message: 'Authentication required.'
       });
+      return;
     }
 
     const resourceUserId = req.params[userIdParam] || req.body[userIdParam];
     
     // Admin can access any resource
     if (req.user.role === 'admin') {
-      return next();
+      next();
+      return;
     }
 
     // User can only access their own resources
     if (req.user.id !== resourceUserId) {
-      return res.status(403).json({
+      res.status(403).json({
         success: false,
         message: 'Access denied. You can only access your own resources.'
       });
+      return;
     }
 
     next();
@@ -129,7 +139,7 @@ export const optionalAuth = async (
   req: AuthRequest,
   res: Response,
   next: NextFunction
-) => {
+): Promise<void> => {
   try {
     const authHeader = req.headers.authorization;
     const cookieToken = req.cookies?.token;
@@ -163,7 +173,7 @@ export const optionalAuth = async (
 export const authRateLimit = (maxAttempts: number = 5, windowMs: number = 15 * 60 * 1000) => {
   const attempts = new Map();
 
-  return (req: AuthRequest, res: Response, next: NextFunction) => {
+  return (req: AuthRequest, res: Response, next: NextFunction): void => {
     const key = req.ip + (req.body.email || '');
     const now = Date.now();
     const windowStart = now - windowMs;
@@ -184,10 +194,11 @@ export const authRateLimit = (maxAttempts: number = 5, windowMs: number = 15 * 6
     }
 
     if (recentAttempts >= maxAttempts) {
-      return res.status(429).json({
+      res.status(429).json({
         success: false,
         message: `Too many authentication attempts. Please try again in ${Math.ceil(windowMs / 60000)} minutes.`
       });
+      return;
     }
 
     // Record this attempt

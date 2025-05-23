@@ -1,5 +1,36 @@
-import mongoose, { Schema } from 'mongoose';
-import { IBusiness } from '../types';
+import mongoose, { Schema, Document } from 'mongoose';
+
+// Define the business hours interface
+interface BusinessHours {
+  open: string;
+  close: string;
+  isOpen: boolean;
+}
+
+// Define the business interface
+export interface IBusiness extends Document {
+  _id: string;
+  owner: mongoose.Types.ObjectId;
+  name: string;
+  description?: string;
+  whatsappNumber: string;
+  website?: string;
+  address?: string;
+  timeZone: string;
+  businessHours: {
+    monday: BusinessHours;
+    tuesday: BusinessHours;
+    wednesday: BusinessHours;
+    thursday: BusinessHours;
+    friday: BusinessHours;
+    saturday: BusinessHours;
+    sunday: BusinessHours;
+  };
+  services: string[];
+  isActive: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+}
 
 const businessHoursSchema = new Schema({
   open: {
@@ -57,13 +88,34 @@ const businessSchema = new Schema<IBusiness>({
     default: 'UTC'
   },
   businessHours: {
-    monday: { type: businessHoursSchema, default: { open: '09:00', close: '17:00', isOpen: true } },
-    tuesday: { type: businessHoursSchema, default: { open: '09:00', close: '17:00', isOpen: true } },
-    wednesday: { type: businessHoursSchema, default: { open: '09:00', close: '17:00', isOpen: true } },
-    thursday: { type: businessHoursSchema, default: { open: '09:00', close: '17:00', isOpen: true } },
-    friday: { type: businessHoursSchema, default: { open: '09:00', close: '17:00', isOpen: true } },
-    saturday: { type: businessHoursSchema, default: { open: '09:00', close: '17:00', isOpen: false } },
-    sunday: { type: businessHoursSchema, default: { open: '09:00', close: '17:00', isOpen: false } }
+    monday: { 
+      type: businessHoursSchema, 
+      default: { open: '09:00', close: '17:00', isOpen: true } 
+    },
+    tuesday: { 
+      type: businessHoursSchema, 
+      default: { open: '09:00', close: '17:00', isOpen: true } 
+    },
+    wednesday: { 
+      type: businessHoursSchema, 
+      default: { open: '09:00', close: '17:00', isOpen: true } 
+    },
+    thursday: { 
+      type: businessHoursSchema, 
+      default: { open: '09:00', close: '17:00', isOpen: true } 
+    },
+    friday: { 
+      type: businessHoursSchema, 
+      default: { open: '09:00', close: '17:00', isOpen: true } 
+    },
+    saturday: { 
+      type: businessHoursSchema, 
+      default: { open: '09:00', close: '17:00', isOpen: false } 
+    },
+    sunday: { 
+      type: businessHoursSchema, 
+      default: { open: '09:00', close: '17:00', isOpen: false } 
+    }
   },
   services: [{
     type: String,
@@ -91,7 +143,7 @@ businessSchema.index({ whatsappNumber: 1 });
 businessSchema.index({ isActive: 1 });
 
 // Virtual for business slug (for public booking URL)
-businessSchema.virtual('slug').get(function() {
+businessSchema.virtual('slug').get(function(this: IBusiness) {
   return this.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
 });
 

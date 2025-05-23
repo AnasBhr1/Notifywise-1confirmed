@@ -2,13 +2,24 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { Eye, EyeOff, Mail, Lock, ArrowLeft, Crown, Sparkles, Building, User } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { 
+  Eye, 
+  EyeOff, 
+  Mail, 
+  Lock, 
+  ArrowLeft, 
+  Crown, 
+  Sparkles, 
+  Building, 
+  User,
+  ArrowRight  // ← Added this missing import
+} from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useAuth } from '@/components/auth-provider';
 import { useToast } from '@/hooks/use-toast';
-import { motion, AnimatePresence } from 'framer-motion';
 
 export default function RegisterPage() {
   const [formData, setFormData] = useState({

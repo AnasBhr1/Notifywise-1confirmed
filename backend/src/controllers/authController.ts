@@ -56,8 +56,10 @@ export const register = catchAsync(async (req: Request, res: Response) => {
   setTokenCookie(res, token);
 
   // Remove password from response
-  const userResponse = user.toJSON();
-  delete userResponse.password;
+  const userResponse = user.toJSON() as any;
+  if (userResponse.password) {
+    delete userResponse.password;
+  }
 
   const response: ApiResponse = {
     success: true,
@@ -91,8 +93,10 @@ export const login = catchAsync(async (req: Request, res: Response) => {
   setTokenCookie(res, token);
 
   // Remove password from response
-  const userResponse = user.toJSON();
-  delete userResponse.password;
+  const userResponse = user.toJSON() as any;
+  if (userResponse.password) {
+    delete userResponse.password;
+  }
 
   const response: ApiResponse = {
     success: true,

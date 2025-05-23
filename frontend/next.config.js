@@ -1,8 +1,6 @@
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  experimental: {
-    appDir: true,
-  },
   images: {
     domains: ['localhost', 'api.placeholder.com', 'via.placeholder.com'],
     remotePatterns: [
@@ -28,8 +26,6 @@ const nextConfig = {
       },
     ];
   },
-  // Remove the rewrites section as it can cause issues with the backend
-  // The frontend should make direct API calls to the backend
 }
 
 module.exports = nextConfig
