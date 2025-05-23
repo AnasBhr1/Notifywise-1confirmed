@@ -8,9 +8,24 @@ import { config } from '../config/env';
 
 // Generate JWT token
 const generateToken = (userId: string): string => {
-  return jwt.sign({ id: userId }, config.JWT_SECRET, {
-    expiresIn: config.JWT_EXPIRES_IN,
-  });
+  const secret = process.env.JWT_SECRET;
+  
+  if (!secret) {
+    throw new Error('JWT_SECRET environment variable is not defined');
+  }
+
+  try {
+    // Use type assertion to bypass TypeScript issues
+    const token = (jwt as any).sign(
+      { id: userId },
+      secret,
+      { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
+    );
+    return token;
+  } catch (error) {
+    console.error('JWT signing error:', error);
+    throw new Error('Failed to generate authentication token');
+  }
 };
 
 // Set JWT cookie
@@ -52,7 +67,7 @@ export const register = catchAsync(async (req: Request, res: Response) => {
   });
 
   // Generate token
-  const token = generateToken(user._id);
+  const token = generateToken(user._id.toString());
   setTokenCookie(res, token);
 
   // Remove password from response
@@ -89,7 +104,7 @@ export const login = catchAsync(async (req: Request, res: Response) => {
   const business = await Business.findOne({ owner: user._id, isActive: true });
 
   // Generate token
-  const token = generateToken(user._id);
+  const token = generateToken(user._id.toString());
   setTokenCookie(res, token);
 
   // Remove password from response

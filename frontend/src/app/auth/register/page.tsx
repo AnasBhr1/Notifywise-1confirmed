@@ -13,7 +13,7 @@ import {
   Sparkles, 
   Building, 
   User,
-  ArrowRight  // ← Added this missing import
+  ArrowRight
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -39,6 +39,22 @@ export default function RegisterPage() {
     setFormData(prev => ({ ...prev, [field]: value }));
   };
 
+  // Improved password validation to match backend requirements
+  const validatePassword = (password: string) => {
+    const minLength = password.length >= 6;
+    const hasUpperCase = /[A-Z]/.test(password);
+    const hasLowerCase = /[a-z]/.test(password);
+    const hasNumber = /\d/.test(password);
+    
+    return {
+      isValid: minLength && hasUpperCase && hasLowerCase && hasNumber,
+      minLength,
+      hasUpperCase,
+      hasLowerCase,
+      hasNumber
+    };
+  };
+
   const handleNextStep = () => {
     if (step === 1) {
       if (!formData.email || !formData.password || !formData.confirmPassword) {
@@ -49,6 +65,34 @@ export default function RegisterPage() {
         });
         return;
       }
+
+      // Validate email format
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(formData.email)) {
+        toast({
+          title: "Invalid email",
+          description: "Please enter a valid email address.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      const passwordValidation = validatePassword(formData.password);
+      if (!passwordValidation.isValid) {
+        let errorMessage = "Password must contain:";
+        if (!passwordValidation.minLength) errorMessage += "\n• At least 6 characters";
+        if (!passwordValidation.hasUpperCase) errorMessage += "\n• One uppercase letter";
+        if (!passwordValidation.hasLowerCase) errorMessage += "\n• One lowercase letter";
+        if (!passwordValidation.hasNumber) errorMessage += "\n• One number";
+        
+        toast({
+          title: "Password requirements not met",
+          description: errorMessage,
+          variant: "destructive",
+        });
+        return;
+      }
+
       if (formData.password !== formData.confirmPassword) {
         toast({
           title: "Passwords don't match",
@@ -57,21 +101,14 @@ export default function RegisterPage() {
         });
         return;
       }
-      if (formData.password.length < 6) {
-        toast({
-          title: "Password too short",
-          description: "Password must be at least 6 characters long.",
-          variant: "destructive",
-        });
-        return;
-      }
+
       setStep(2);
     }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.businessName) {
+    if (!formData.businessName.trim()) {
       toast({
         title: "Missing business name",
         description: "Please enter your business name.",
@@ -80,25 +117,37 @@ export default function RegisterPage() {
       return;
     }
 
+    if (formData.businessName.trim().length < 2) {
+      toast({
+        title: "Business name too short",
+        description: "Business name must be at least 2 characters long.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setLoading(true);
 
     try {
-      await register(formData.email, formData.password, formData.businessName);
+      await register(formData.email, formData.password, formData.businessName.trim());
       toast({
         title: "Welcome to NotifyWise!",
         description: "Your account has been created successfully.",
         variant: "success",
       });
     } catch (error: any) {
+      console.error('Registration error:', error);
       toast({
         title: "Registration failed",
-        description: error.message || "Please try again.",
+        description: error.message || "Please check your information and try again.",
         variant: "destructive",
       });
     } finally {
       setLoading(false);
     }
   };
+
+  const passwordValidation = validatePassword(formData.password);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-purple-50 dark:from-gray-950 dark:via-gray-900 dark:to-indigo-950 flex items-center justify-center p-4 relative overflow-hidden">
@@ -230,6 +279,27 @@ export default function RegisterPage() {
                           variant="glass"
                           required
                         />
+                        {/* Password requirements indicator */}
+                        {formData.password && (
+                          <div className="mt-2 text-xs space-y-1">
+                            <div className={`flex items-center ${passwordValidation.minLength ? 'text-green-600' : 'text-red-500'}`}>
+                              <span className="mr-1">{passwordValidation.minLength ? '✓' : '✗'}</span>
+                              At least 6 characters
+                            </div>
+                            <div className={`flex items-center ${passwordValidation.hasUpperCase ? 'text-green-600' : 'text-red-500'}`}>
+                              <span className="mr-1">{passwordValidation.hasUpperCase ? '✓' : '✗'}</span>
+                              One uppercase letter
+                            </div>
+                            <div className={`flex items-center ${passwordValidation.hasLowerCase ? 'text-green-600' : 'text-red-500'}`}>
+                              <span className="mr-1">{passwordValidation.hasLowerCase ? '✓' : '✗'}</span>
+                              One lowercase letter
+                            </div>
+                            <div className={`flex items-center ${passwordValidation.hasNumber ? 'text-green-600' : 'text-red-500'}`}>
+                              <span className="mr-1">{passwordValidation.hasNumber ? '✓' : '✗'}</span>
+                              One number
+                            </div>
+                          </div>
+                        )}
                       </div>
 
                       <div>
@@ -254,6 +324,11 @@ export default function RegisterPage() {
                           variant="glass"
                           required
                         />
+                        {formData.confirmPassword && formData.password !== formData.confirmPassword && (
+                          <div className="mt-1 text-xs text-red-500">
+                            Passwords do not match
+                          </div>
+                        )}
                       </div>
                     </div>
 
