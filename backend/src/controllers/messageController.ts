@@ -2,6 +2,7 @@ import { Response } from 'express';
 import { catchAsync, AppError } from '../middleware/errorHandler';
 import { AuthRequest, ApiResponse } from '../types';
 import Business from '../models/Business';
+import { whatsappService } from '../services/whatsappService';
 
 // Get message statistics
 export const getMessageStats = catchAsync(async (req: AuthRequest, res: Response) => {
@@ -66,7 +67,7 @@ export const getMessages = catchAsync(async (req: AuthRequest, res: Response) =>
   res.status(200).json(response);
 });
 
-// Send test message (placeholder)
+// Send test message using real 1Confirmed API
 export const sendTestMessage = catchAsync(async (req: AuthRequest, res: Response) => {
   if (!req.user) {
     throw new AppError('User not authenticated', 401);
@@ -78,24 +79,159 @@ export const sendTestMessage = catchAsync(async (req: AuthRequest, res: Response
     throw new AppError('Phone number and message are required', 400);
   }
 
+  // Validate phone number format
+  if (!whatsappService.isValidPhoneNumber(phoneNumber)) {
+    throw new AppError('Invalid phone number format. Use format: +212600000000 or 0600000000', 400);
+  }
+
   // Get user's business
   const business = await Business.findOne({ owner: req.user.id, isActive: true });
   if (!business) {
     throw new AppError('Business not found', 404);
   }
 
-  // Here you would integrate with your WhatsApp API
-  // For now, return success
+  console.log(`📱 ${business.name} sending test message to ${phoneNumber}`);
+
+  // Send the message using 1Confirmed WhatsApp service
+  const result = await whatsappService.sendTextMessage(phoneNumber, message);
+
+  if (result.success) {
+    const response: ApiResponse = {
+      success: true,
+      message: 'Test message sent successfully via 1Confirmed',
+      data: {
+        phoneNumber,
+        message,
+        messageId: result.messageId,
+        status: result.status,
+        provider: '1Confirmed',
+        sentAt: new Date(),
+        apiResponse: result.data
+      }
+    };
+    res.status(200).json(response);
+  } else {
+    throw new AppError(`Failed to send message via 1Confirmed: ${result.error}`, 500);
+  }
+});
+
+// Send appointment confirmation
+export const sendAppointmentConfirmation = catchAsync(async (req: AuthRequest, res: Response) => {
+  if (!req.user) {
+    throw new AppError('User not authenticated', 401);
+  }
+
+  const { phoneNumber, clientName, service, appointmentDate } = req.body;
+
+  if (!phoneNumber || !clientName || !service || !appointmentDate) {
+    throw new AppError('Phone number, client name, service, and appointment date are required', 400);
+  }
+
+  // Get user's business
+  const business = await Business.findOne({ owner: req.user.id, isActive: true });
+  if (!business) {
+    throw new AppError('Business not found', 404);
+  }
+
+  const appointmentDateObj = new Date(appointmentDate);
+  
+  // Send confirmation message
+  const result = await whatsappService.sendAppointmentConfirmation(
+    phoneNumber,
+    clientName,
+    service,
+    appointmentDateObj,
+    business.name
+  );
+
+  if (result.success) {
+    const response: ApiResponse = {
+      success: true,
+      message: 'Appointment confirmation sent successfully',
+      data: {
+        phoneNumber,
+        clientName,
+        service,
+        appointmentDate: appointmentDateObj,
+        messageId: result.messageId,
+        status: result.status,
+        sentAt: new Date()
+      }
+    };
+    res.status(200).json(response);
+  } else {
+    throw new AppError(`Failed to send confirmation: ${result.error}`, 500);
+  }
+});
+
+// Send appointment reminder
+export const sendAppointmentReminder = catchAsync(async (req: AuthRequest, res: Response) => {
+  if (!req.user) {
+    throw new AppError('User not authenticated', 401);
+  }
+
+  const { phoneNumber, clientName, service, appointmentDate, reminderType = '24h' } = req.body;
+
+  if (!phoneNumber || !clientName || !service || !appointmentDate) {
+    throw new AppError('Phone number, client name, service, and appointment date are required', 400);
+  }
+
+  // Get user's business
+  const business = await Business.findOne({ owner: req.user.id, isActive: true });
+  if (!business) {
+    throw new AppError('Business not found', 404);
+  }
+
+  const appointmentDateObj = new Date(appointmentDate);
+  
+  // Send reminder message
+  const result = await whatsappService.sendAppointmentReminder(
+    phoneNumber,
+    clientName,
+    service,
+    appointmentDateObj,
+    business.name,
+    reminderType
+  );
+
+  if (result.success) {
+    const response: ApiResponse = {
+      success: true,
+      message: 'Appointment reminder sent successfully',
+      data: {
+        phoneNumber,
+        clientName,
+        service,
+        appointmentDate: appointmentDateObj,
+        reminderType,
+        messageId: result.messageId,
+        status: result.status,
+        sentAt: new Date()
+      }
+    };
+    res.status(200).json(response);
+  } else {
+    throw new AppError(`Failed to send reminder: ${result.error}`, 500);
+  }
+});
+
+// Test WhatsApp API connection
+export const testWhatsAppConnection = catchAsync(async (req: AuthRequest, res: Response) => {
+  if (!req.user) {
+    throw new AppError('User not authenticated', 401);
+  }
+
+  const result = await whatsappService.testConnection();
+
   const response: ApiResponse = {
-    success: true,
-    message: 'Test message sent successfully',
+    success: result.success,
+    message: result.message,
     data: {
-      phoneNumber,
-      message,
-      status: 'sent',
-      sentAt: new Date()
+      apiConfigured: !!process.env.WHATSAPP_API_KEY,
+      apiUrl: process.env.WHATSAPP_API_URL,
+      timestamp: new Date()
     }
   };
 
-  res.status(200).json(response);
+  res.status(result.success ? 200 : 500).json(response);
 });

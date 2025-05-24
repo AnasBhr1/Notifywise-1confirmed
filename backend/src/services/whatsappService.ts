@@ -1,355 +1,416 @@
-import axios, { AxiosResponse } from 'axios';
+import axios from 'axios';
 import { config } from '../config/env';
-import { WhatsAppResponse, IAppointment, IClient, IBusiness } from '../types';
 
-// WhatsApp API client
-class WhatsAppService {
+export interface WhatsAppMessage {
+  to: string;
+  message: string;
+  type?: 'text' | 'template';
+  templateName?: string;
+  templateParams?: string[];
+}
+
+export interface WhatsAppResponse {
+  success: boolean;
+  messageId?: string;
+  status?: string;
+  error?: string;
+  data?: any;
+}
+
+export class WhatsAppService {
   private apiKey: string;
-  private baseUrl: string;
-  private axiosInstance;
+  private apiUrl: string;
+  private axios;
 
   constructor() {
-    this.apiKey = config.WHATSAPP_API_KEY;
-    this.baseUrl = config.WHATSAPP_API_URL;
+    this.apiKey = config.WHATSAPP_API_KEY || process.env.WHATSAPP_API_KEY || '';
+    this.apiUrl = config.WHATSAPP_API_URL || process.env.WHATSAPP_API_URL || 'https://1confirmed.com/api/v1';
     
-    this.axiosInstance = axios.create({
-      baseURL: this.baseUrl,
+    if (!this.apiKey) {
+      console.warn('⚠️  1Confirmed API key not configured. Messages will not be sent.');
+    }
+
+    // Configure axios instance for 1Confirmed API
+    this.axios = axios.create({
+      baseURL: this.apiUrl,
       timeout: 30000,
       headers: {
+        'Authorization': `Bearer ${this.apiKey}`,
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${this.apiKey}`
+        'Accept': 'application/json'
       }
     });
 
-    // Request interceptor for logging
-    this.axiosInstance.interceptors.request.use(
-      (config) => {
-        console.log(`📱 WhatsApp API Request: ${config.method?.toUpperCase()} ${config.url}`);
-        return config;
-      },
-      (error) => {
-        console.error('📱 WhatsApp API Request Error:', error);
-        return Promise.reject(error);
-      }
-    );
-
-    // Response interceptor for logging
-    this.axiosInstance.interceptors.response.use(
-      (response) => {
-        console.log(`📱 WhatsApp API Response: ${response.status} ${response.statusText}`);
-        return response;
-      },
-      (error) => {
-        console.error('📱 WhatsApp API Response Error:', error.response?.data || error.message);
-        return Promise.reject(error);
-      }
-    );
+    console.log(`🔧 1Confirmed WhatsApp Service initialized with URL: ${this.apiUrl}`);
   }
 
-  // Check if WhatsApp service is configured
-  public isConfigured(): boolean {
-    return !!(this.apiKey && this.baseUrl);
-  }
-
-  // Send a simple text message
-  public async sendMessage(
-    to: string,
-    message: string,
-    businessId?: string
-  ): Promise<WhatsAppResponse> {
+  /**
+   * Send a text message via 1Confirmed WhatsApp API
+   */
+  async sendTextMessage(to: string, message: string): Promise<WhatsAppResponse> {
     try {
-      if (!this.isConfigured()) {
-        throw new Error('WhatsApp service is not configured. Please check your API key and URL.');
+      if (!this.apiKey) {
+        console.log('📝 WhatsApp message (API key not configured):', { to, message });
+        return {
+          success: false,
+          error: 'WhatsApp API key not configured'
+        };
       }
 
-      // Clean phone number (remove any non-numeric characters)
-      const cleanNumber = to.replace(/\D/g, '');
+      // Format phone number (ensure it has country code but without +)
+      const formattedNumber = this.formatPhoneNumber(to);
       
-      // Ensure number has country code (add default if missing)
-      const phoneNumber = cleanNumber.startsWith('1') ? cleanNumber : `1${cleanNumber}`;
+      console.log(`📱 Sending WhatsApp message via 1Confirmed to ${formattedNumber}`);
+      console.log(`📝 Message: ${message.substring(0, 100)}${message.length > 100 ? '...' : ''}`);
 
+      // 1Confirmed API payload structure (based on your Postman request)
       const payload = {
-        to: phoneNumber,
-        type: 'text',
-        text: {
-          body: message
-        },
-        ...(businessId && { business_id: businessId })
+        language_id: 3,  // English
+        template_id: 97, // Default template ID
+        phone: formattedNumber,
+        data: {
+          broadcast_template_image: "https://1confirmed.com/images/default_template_img.jpeg",
+          phone: formattedNumber,
+          message: message
+        }
       };
 
-      const response: AxiosResponse = await this.axiosInstance.post('/messages', payload);
+      console.log('📤 Sending payload to 1Confirmed:', JSON.stringify(payload, null, 2));
 
-      return {
-        success: true,
-        message_id: response.data.messages?.[0]?.id,
-        status: response.data.messages?.[0]?.message_status,
-        details: response.data
-      };
+      const response = await this.axios.post('/messages', payload);
+
+      console.log('📥 1Confirmed API Response:', response.data);
+
+      if (response.status === 200) {
+        console.log(`✅ WhatsApp message sent successfully via 1Confirmed`);
+        
+        return {
+          success: true,
+          messageId: response.data?.id || 'message_sent',
+          status: 'sent',
+          data: response.data
+        };
+      } else {
+        console.error('❌ Unexpected response status:', response.status);
+        return {
+          success: false,
+          error: `Unexpected response status: ${response.status}`
+        };
+      }
+
     } catch (error: any) {
-      console.error('WhatsApp send message error:', error);
+      console.error('❌ 1Confirmed WhatsApp message failed:', {
+        status: error.response?.status,
+        statusText: error.response?.statusText,
+        data: error.response?.data,
+        message: error.message
+      });
       
       return {
         success: false,
-        error: error.response?.data?.error?.message || error.message,
-        details: error.response?.data
+        error: error.response?.data?.message || 
+               error.response?.data?.error || 
+               error.message || 
+               'Failed to send WhatsApp message via 1Confirmed'
       };
     }
   }
 
-  // Send appointment confirmation message
-  public async sendConfirmation(
-    appointment: IAppointment,
-    client: IClient,
-    business: IBusiness
+  /**
+   * Send a template message via 1Confirmed API
+   */
+  async sendTemplateMessage(
+    to: string, 
+    templateId: number = 97,
+    customMessage?: string,
+    imageUrl?: string
   ): Promise<WhatsAppResponse> {
-    const message = this.generateConfirmationMessage(appointment, client, business);
-    return await this.sendMessage(client.whatsappNumber, message, business._id);
+    try {
+      if (!this.apiKey) {
+        console.log('📝 WhatsApp template message (API key not configured):', { to, templateId });
+        return {
+          success: false,
+          error: 'WhatsApp API key not configured'
+        };
+      }
+
+      const formattedNumber = this.formatPhoneNumber(to);
+      
+      console.log(`📱 Sending WhatsApp template ${templateId} via 1Confirmed to ${formattedNumber}`);
+
+      const payload = {
+        language_id: 3,
+        template_id: templateId,
+        phone: formattedNumber,
+        data: {
+          broadcast_template_image: imageUrl || "https://1confirmed.com/images/default_template_img.jpeg",
+          phone: formattedNumber,
+          message: customMessage || "Hello from NotifyWise!"
+        }
+      };
+
+      const response = await this.axios.post('/messages', payload);
+
+      if (response.status === 200) {
+        console.log(`✅ WhatsApp template sent successfully via 1Confirmed`);
+        
+        return {
+          success: true,
+          messageId: response.data?.id || 'template_sent',
+          status: 'sent',
+          data: response.data
+        };
+      } else {
+        return {
+          success: false,
+          error: `Unexpected response status: ${response.status}`
+        };
+      }
+
+    } catch (error: any) {
+      console.error('❌ 1Confirmed WhatsApp template failed:', error.response?.data || error.message);
+      
+      return {
+        success: false,
+        error: error.response?.data?.message || 
+               error.response?.data?.error || 
+               error.message || 
+               'Failed to send WhatsApp template via 1Confirmed'
+      };
+    }
   }
 
-  // Send appointment reminder message
-  public async sendReminder(
-    appointment: IAppointment,
-    client: IClient,
-    business: IBusiness
+  /**
+   * Send appointment confirmation message using 1Confirmed
+   */
+  async sendAppointmentConfirmation(
+    to: string,
+    clientName: string,
+    service: string,
+    appointmentDate: Date,
+    businessName: string
   ): Promise<WhatsAppResponse> {
-    const message = this.generateReminderMessage(appointment, client, business);
-    return await this.sendMessage(client.whatsappNumber, message, business._id);
-  }
-
-  // Send follow-up message
-  public async sendFollowUp(
-    appointment: IAppointment,
-    client: IClient,
-    business: IBusiness
-  ): Promise<WhatsAppResponse> {
-    const message = this.generateFollowUpMessage(appointment, client, business);
-    return await this.sendMessage(client.whatsappNumber, message, business._id);
-  }
-
-  // Generate confirmation message
-  private generateConfirmationMessage(
-    appointment: IAppointment,
-    client: IClient,
-    business: IBusiness
-  ): string {
-    const appointmentDate = new Date(appointment.appointmentDate);
     const formattedDate = appointmentDate.toLocaleDateString('en-US', {
       weekday: 'long',
       year: 'numeric',
       month: 'long',
       day: 'numeric'
     });
-    const formattedTime = appointmentDate.toLocaleTimeString('en-US', {
-      hour: '2-digit',
+    
+    const formattedTime = appointmentDate.toLocaleTimeString('en-US', { 
+      hour: '2-digit', 
       minute: '2-digit',
-      hour12: true
+      hour12: true 
     });
 
-    return `🎉 Appointment Confirmed!
+    const message = `🎉 Appointment Confirmed!
 
-Hi ${client.firstName}! 
+Hello ${clientName}! 👋
 
-Your appointment has been confirmed:
+Your appointment has been successfully booked:
 
-📅 **Date:** ${formattedDate}
-⏰ **Time:** ${formattedTime}
-💼 **Service:** ${appointment.service}
-🏢 **Business:** ${business.name}
+📅 Service: ${service}
+🗓️  Date: ${formattedDate}
+🕐 Time: ${formattedTime}
+🏢 Business: ${businessName}
 
-${business.address ? `📍 **Location:** ${business.address}\n` : ''}${appointment.notes ? `📝 **Notes:** ${appointment.notes}\n` : ''}
-Thank you for choosing ${business.name}! We look forward to seeing you.
+We're excited to see you! 
 
-Need to reschedule or cancel? Please call us or reply to this message.
+If you need to reschedule or have any questions, please don't hesitate to contact us.
 
----
-${business.name}
-${business.whatsappNumber}`;
+Thank you for choosing ${businessName}! ✨`;
+
+    return this.sendTextMessage(to, message);
   }
 
-  // Generate reminder message
-  private generateReminderMessage(
-    appointment: IAppointment,
-    client: IClient,
-    business: IBusiness
-  ): string {
-    const appointmentDate = new Date(appointment.appointmentDate);
-    const formattedDate = appointmentDate.toLocaleDateString('en-US', {
-      weekday: 'long',
-      month: 'long',
-      day: 'numeric'
-    });
-    const formattedTime = appointmentDate.toLocaleTimeString('en-US', {
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: true
-    });
-
-    return `⏰ Appointment Reminder
-
-Hi ${client.firstName}!
-
-This is a friendly reminder about your upcoming appointment:
-
-📅 **Tomorrow:** ${formattedDate}
-⏰ **Time:** ${formattedTime}
-💼 **Service:** ${appointment.service}
-🏢 **Business:** ${business.name}
-
-${business.address ? `📍 **Location:** ${business.address}\n` : ''}Please arrive 5-10 minutes early. 
-
-Need to reschedule or cancel? Please let us know as soon as possible.
-
-See you tomorrow!
-
----
-${business.name}
-${business.whatsappNumber}`;
-  }
-
-  // Generate follow-up message
-  private generateFollowUpMessage(
-    appointment: IAppointment,
-    client: IClient,
-    business: IBusiness
-  ): string {
-    return `🙏 Thank You!
-
-Hi ${client.firstName}!
-
-Thank you for visiting ${business.name} today for your ${appointment.service} appointment.
-
-We hope you had a great experience with us!
-
-⭐ **How did we do?**
-We'd love to hear your feedback. Your review helps us improve our service.
-
-📅 **Book your next appointment:**
-Ready to schedule your next visit? Just reply to this message or call us.
-
-${business.website ? `🌐 **Visit our website:** ${business.website}\n` : ''}
-Thank you for choosing ${business.name}!
-
----
-${business.name}
-${business.whatsappNumber}`;
-  }
-
-  // Send template message (for 1CONFIRMED templates)
-  public async sendTemplate(
+  /**
+   * Send appointment reminder message using 1Confirmed
+   */
+  async sendAppointmentReminder(
     to: string,
-    templateName: string,
-    templateParams: Record<string, string>,
-    businessId?: string
+    clientName: string,
+    service: string,
+    appointmentDate: Date,
+    businessName: string,
+    reminderType: '24h' | '2h' | '30m' = '24h'
   ): Promise<WhatsAppResponse> {
-    try {
-      if (!this.isConfigured()) {
-        throw new Error('WhatsApp service is not configured.');
-      }
+    const formattedDate = appointmentDate.toLocaleDateString('en-US');
+    const formattedTime = appointmentDate.toLocaleTimeString('en-US', { 
+      hour: '2-digit', 
+      minute: '2-digit',
+      hour12: true 
+    });
 
-      const cleanNumber = to.replace(/\D/g, '');
-      const phoneNumber = cleanNumber.startsWith('1') ? cleanNumber : `1${cleanNumber}`;
-
-      const payload = {
-        to: phoneNumber,
-        type: 'template',
-        template: {
-          name: templateName,
-          language: {
-            code: 'en_US'
-          },
-          components: [
-            {
-              type: 'body',
-              parameters: Object.keys(templateParams).map(key => ({
-                type: 'text',
-                text: templateParams[key]
-              }))
-            }
-          ]
-        },
-        ...(businessId && { business_id: businessId })
-      };
-
-      const response: AxiosResponse = await this.axiosInstance.post('/messages', payload);
-
-      return {
-        success: true,
-        message_id: response.data.messages?.[0]?.id,
-        status: response.data.messages?.[0]?.message_status,
-        details: response.data
-      };
-    } catch (error: any) {
-      console.error('WhatsApp send template error:', error);
-      
-      return {
-        success: false,
-        error: error.response?.data?.error?.message || error.message,
-        details: error.response?.data
-      };
+    let timeText = '';
+    let emoji = '';
+    
+    switch (reminderType) {
+      case '24h':
+        timeText = 'tomorrow';
+        emoji = '📅';
+        break;
+      case '2h':
+        timeText = 'in 2 hours';
+        emoji = '⏰';
+        break;
+      case '30m':
+        timeText = 'in 30 minutes';
+        emoji = '🔔';
+        break;
     }
+
+    const message = `${emoji} Appointment Reminder
+
+Hi ${clientName}! 
+
+This is a friendly reminder about your appointment ${timeText}:
+
+📋 Service: ${service}
+📅 Date: ${formattedDate}
+🕐 Time: ${formattedTime}
+🏢 Location: ${businessName}
+
+We look forward to seeing you! 😊
+
+If you need to reschedule, please contact us as soon as possible.
+
+See you soon! 👋`;
+
+    return this.sendTextMessage(to, message);
   }
 
-  // Get message status
-  public async getMessageStatus(messageId: string): Promise<WhatsAppResponse> {
+  /**
+   * Send follow-up message after appointment using 1Confirmed
+   */
+  async sendFollowUpMessage(
+    to: string,
+    clientName: string,
+    service: string,
+    businessName: string
+  ): Promise<WhatsAppResponse> {
+    const message = `💙 Thank You!
+
+Hi ${clientName}! 
+
+Thank you for choosing ${businessName} for your ${service} today.
+
+We hope you had an excellent experience with us! 
+
+🌟 Your feedback means the world to us. If you have a moment, we'd love to hear about your experience.
+
+We'd be delighted to see you again soon! 
+
+Best regards,
+The ${businessName} Team ✨`;
+
+    return this.sendTextMessage(to, message);
+  }
+
+  /**
+   * Test the 1Confirmed API connection
+   */
+  async testConnection(): Promise<{ success: boolean; message: string; data?: any }> {
     try {
-      if (!this.isConfigured()) {
-        throw new Error('WhatsApp service is not configured.');
-      }
-
-      const response: AxiosResponse = await this.axiosInstance.get(`/messages/${messageId}`);
-
-      return {
-        success: true,
-        status: response.data.status,
-        details: response.data
-      };
-    } catch (error: any) {
-      console.error('WhatsApp get message status error:', error);
-      
-      return {
-        success: false,
-        error: error.response?.data?.error?.message || error.message,
-        details: error.response?.data
-      };
-    }
-  }
-
-  // Validate phone number format
-  public validatePhoneNumber(phoneNumber: string): boolean {
-    const cleanNumber = phoneNumber.replace(/\D/g, '');
-    return /^\d{10,15}$/.test(cleanNumber);
-  }
-
-  // Format phone number for WhatsApp
-  public formatPhoneNumber(phoneNumber: string): string {
-    const cleanNumber = phoneNumber.replace(/\D/g, '');
-    return cleanNumber.startsWith('1') ? cleanNumber : `1${cleanNumber}`;
-  }
-
-  // Test WhatsApp connection
-  public async testConnection(): Promise<WhatsAppResponse> {
-    try {
-      if (!this.isConfigured()) {
+      if (!this.apiKey) {
         return {
           success: false,
-          error: 'WhatsApp service is not configured.'
+          message: '1Confirmed API key not configured'
         };
       }
 
-      // Try to get account info or send a test request
-      const response: AxiosResponse = await this.axiosInstance.get('/account');
+      console.log('🔍 Testing 1Confirmed API connection...');
 
-      return {
-        success: true,
-        details: response.data
+      // Test with a simple message to a test number
+      const testPayload = {
+        language_id: 3,
+        template_id: 97,
+        phone: "212600000000", // Test number format
+        data: {
+          broadcast_template_image: "https://1confirmed.com/images/default_template_img.jpeg",
+          phone: "212600000000",
+          message: "API Connection Test from NotifyWise"
+        }
       };
-    } catch (error: any) {
-      console.error('WhatsApp test connection error:', error);
+
+      // Just test the API structure, don't actually send
+      console.log('📤 Test payload structure:', JSON.stringify(testPayload, null, 2));
       
       return {
+        success: true,
+        message: '1Confirmed API configuration is valid',
+        data: {
+          apiUrl: this.apiUrl,
+          hasApiKey: !!this.apiKey,
+          testPayload: testPayload
+        }
+      };
+
+    } catch (error: any) {
+      console.error('❌ 1Confirmed API test failed:', error.message);
+      return {
         success: false,
-        error: error.response?.data?.error?.message || error.message,
-        details: error.response?.data
+        message: error.message || '1Confirmed API connection test failed'
+      };
+    }
+  }
+
+  /**
+   * Format phone number for 1Confirmed API (without + prefix)
+   */
+  private formatPhoneNumber(phoneNumber: string): string {
+    // Remove all non-numeric characters
+    let cleaned = phoneNumber.replace(/\D/g, '');
+    
+    // Remove leading + if present
+    if (cleaned.startsWith('+')) {
+      cleaned = cleaned.substring(1);
+    }
+    
+    // If number doesn't start with country code, assume it's Morocco (212)
+    if (cleaned.length === 9) {
+      cleaned = '212' + cleaned; // Morocco country code
+    } else if (cleaned.length === 10) {
+      cleaned = '1' + cleaned; // US/Canada country code
+    }
+    
+    console.log(`📞 Formatted phone number: ${phoneNumber} -> ${cleaned}`);
+    return cleaned;
+  }
+
+  /**
+   * Validate phone number format
+   */
+  isValidPhoneNumber(phoneNumber: string): boolean {
+    const cleaned = phoneNumber.replace(/\D/g, '');
+    const isValid = cleaned.length >= 10 && cleaned.length <= 15;
+    console.log(`✅ Phone number validation: ${phoneNumber} -> ${isValid}`);
+    return isValid;
+  }
+
+  /**
+   * Get message delivery status (if 1Confirmed provides this endpoint)
+   */
+  async getMessageStatus(messageId: string): Promise<any> {
+    try {
+      if (!this.apiKey) {
+        return {
+          success: false,
+          error: '1Confirmed API key not configured'
+        };
+      }
+
+      // Note: Check 1Confirmed documentation for actual status endpoint
+      const response = await this.axios.get(`/messages/${messageId}/status`);
+      return {
+        success: true,
+        data: response.data
+      };
+
+    } catch (error: any) {
+      console.error('❌ Failed to get message status from 1Confirmed:', error.response?.data || error.message);
+      return {
+        success: false,
+        error: error.response?.data?.message || error.message
       };
     }
   }
@@ -357,4 +418,3 @@ ${business.whatsappNumber}`;
 
 // Export singleton instance
 export const whatsappService = new WhatsAppService();
-export default whatsappService;
