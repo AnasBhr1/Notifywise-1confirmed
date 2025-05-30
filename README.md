@@ -264,7 +264,6 @@ npm run test:coverage
 
 ## 🆘 Support
 
-- **Documentation**: Check our [docs](docs/) folder
 - **Issues**: Create a GitHub issue
 - **Email**: anasbhr1@hotmail.com
 
