@@ -137,7 +137,7 @@ export function getTimeSlots(startHour: number = 9, endHour: number = 17, interv
 }
 
 export function isBusinessHours(date: Date, businessHours: any): boolean {
-  const dayOfWeek = date.toLocaleDateString('en-US', { weekday: 'lowercase' })
+  const dayOfWeek = date.toLocaleDateString('en-US', { weekday: 'long' }).toLowerCase()
   const hours = businessHours[dayOfWeek]
   
   if (!hours || !hours.isOpen) return false
